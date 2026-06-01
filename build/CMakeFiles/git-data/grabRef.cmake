@@ -18,7 +18,7 @@ set(HEAD_HASH)
 file(READ "D:/ESP_Projects/ctsr_obd_reader_dual_3/build/CMakeFiles/git-data/HEAD" HEAD_CONTENTS LIMIT 1024)
 
 string(STRIP "${HEAD_CONTENTS}" HEAD_CONTENTS)
-set(GIT_DIR "C:/esp/v6.0.1/esp-idf/.git")
+set(GIT_DIR "D:/ESP_Projects/ctsr_obd_reader_dual_3/.git")
 # handle git-worktree
 if(EXISTS "${GIT_DIR}/commondir")
 	file(READ "${GIT_DIR}/commondir" GIT_DIR_NEW LIMIT 1024)

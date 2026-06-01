@@ -1,4 +1,3 @@
-"-specs=D:/ESP_Projects/ctsr_obd_reader_dual_3/build/bootloader/specs/picolibc.specs"
 -Wno-frame-address
 -mlongcalls
 -fno-builtin-memcpy
