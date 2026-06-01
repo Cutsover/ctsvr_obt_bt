@@ -1,0 +1,7 @@
+-Wno-frame-address
+-mlongcalls
+-fno-builtin-memcpy
+-fno-builtin-memset
+-fno-builtin-bzero
+"-specs=D:/ESP_Projects/ctsr_obd_reader_dual_3/build/specs/picolibc.specs"
+-fno-rtti
