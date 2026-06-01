@@ -1,4 +1,5 @@
 #include "app_web.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include "esp_http_server.h"
@@ -39,6 +40,48 @@ static esp_err_t root_get(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     return httpd_resp_send(req, index_html, HTTPD_RESP_USE_STRLEN);
+}
+
+static int hex_value(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+
+    return -1;
+}
+
+
+static void url_decode_in_place(char *s)
+{
+    char *src = s;
+    char *dst = s;
+
+    while (*src) {
+        if (src[0] == '%' && src[1] && src[2]) {
+            int hi = hex_value(src[1]);
+            int lo = hex_value(src[2]);
+
+            if (hi >= 0 && lo >= 0) {
+                *dst++ = (char)((hi << 4) | lo);
+                src += 3;
+                continue;
+            }
+        }
+
+        *dst++ = (*src == '+') ? ' ' : *src;
+        src++;
+    }
+
+    *dst = '\0';
 }
 
 static void scan_classic_task(void *arg)
@@ -152,6 +195,8 @@ static esp_err_t connect_post(httpd_req_t *req)
         httpd_query_key_value(query, "mac", mac, sizeof(mac)) != ESP_OK) {
         return send_json(req, "{\"ok\":false,\"error\":\"mac query required\"}");
     }
+
+    url_decode_in_place(mac);
 
     esp_err_t err = bt_elm327_connect_mac_string(mac);
     char json[128];
