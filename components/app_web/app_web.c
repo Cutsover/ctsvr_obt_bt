@@ -10,6 +10,7 @@
 #include "bt_elm327.h"
 #include "obd_service.h"
 #include "app_storage.h"
+#include "app_state.h"
 static const char *TAG="APP_WEB";
 static const char index_html[] =
 "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -114,9 +115,20 @@ static esp_err_t status_get(httpd_req_t *req)
     char name[64] = "";
     (void)app_storage_load_elm(saved, sizeof(saved), name, sizeof(name));
 
-    char json[256];
+    app_state_snapshot_t state = app_state_get_snapshot();
+
+    char json[512];
     snprintf(json, sizeof(json),
-             "{\"bt_state\":\"%s\",\"connected_mac\":\"%s\",\"saved_mac\":\"%s\"}",
+             "{\"app_state\":\"%s\",\"last_error\":\"%s\","
+             "\"storage_ready\":%s,\"wifi_ready\":%s,\"bt_ready\":%s,\"web_ready\":%s,\"obd_ready\":%s,"
+             "\"bt_state\":\"%s\",\"connected_mac\":\"%s\",\"saved_mac\":\"%s\"}",
+             app_state_string(state.state),
+             esp_err_to_name(state.last_error),
+             state.storage_ready ? "true" : "false",
+             state.wifi_ready ? "true" : "false",
+             state.bt_ready ? "true" : "false",
+             state.web_ready ? "true" : "false",
+             state.obd_ready ? "true" : "false",
              bt_elm327_state_string(),
              bt_elm327_connected_mac(),
              saved);
@@ -210,7 +222,15 @@ static esp_err_t connect_post(httpd_req_t *req)
 
 static esp_err_t obd_init_post(httpd_req_t *req)
 {
+    app_state_set(APP_STATE_OBD_INIT);
     esp_err_t err = obd_init_elm();
+    app_state_mark_obd_ready(err == ESP_OK);
+    if (err == ESP_OK) {
+        app_state_set(APP_STATE_OBD_READY);
+    } else {
+        app_state_fail(APP_STATE_ERROR, err);
+    }
+
     char json[96];
     snprintf(json, sizeof(json),
              "{\"ok\":%s,\"error\":\"%s\"}",

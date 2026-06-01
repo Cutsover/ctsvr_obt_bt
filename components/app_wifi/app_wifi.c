@@ -6,17 +6,47 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "lwip/ip4_addr.h"
 
 #define WIFI_SSID "CTSR_Prod"
 #define WIFI_PASS "elephant"
 
 static const char *TAG = "APP_WIFI";
+static EventGroupHandle_t s_wifi_events;
+
+#define WIFI_AP_STARTED_BIT BIT0
+#define RETURN_ON_ERROR(expr) do { \
+        esp_err_t err__ = (expr); \
+        if (err__ != ESP_OK) { \
+            ESP_LOGE(TAG, "%s failed: %s", #expr, esp_err_to_name(err__)); \
+            return err__; \
+        } \
+    } while (0)
+
+static void wifi_event_handler(void *arg,
+                               esp_event_base_t event_base,
+                               int32_t event_id,
+                               void *event_data)
+{
+    (void)arg;
+    (void)event_data;
+
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_START && s_wifi_events) {
+        xEventGroupSetBits(s_wifi_events, WIFI_AP_STARTED_BIT);
+    }
+}
 
 esp_err_t app_wifi_start_ap(void)
 {
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    RETURN_ON_ERROR(esp_netif_init());
+    RETURN_ON_ERROR(esp_event_loop_create_default());
+
+    s_wifi_events = xEventGroupCreate();
+    if (!s_wifi_events) {
+        return ESP_ERR_NO_MEM;
+    }
 
     esp_netif_t *ap = esp_netif_create_default_wifi_ap();
 
@@ -25,12 +55,16 @@ esp_err_t app_wifi_start_ap(void)
     IP4_ADDR(&ip.gw, 10, 10, 10, 1);
     IP4_ADDR(&ip.netmask, 255, 255, 255, 0);
 
-    ESP_ERROR_CHECK(esp_netif_dhcps_stop(ap));
-    ESP_ERROR_CHECK(esp_netif_set_ip_info(ap, &ip));
-    ESP_ERROR_CHECK(esp_netif_dhcps_start(ap));
+    RETURN_ON_ERROR(esp_netif_dhcps_stop(ap));
+    RETURN_ON_ERROR(esp_netif_set_ip_info(ap, &ip));
+    RETURN_ON_ERROR(esp_netif_dhcps_start(ap));
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    RETURN_ON_ERROR(esp_wifi_init(&cfg));
+    RETURN_ON_ERROR(esp_event_handler_register(WIFI_EVENT,
+                                               WIFI_EVENT_AP_START,
+                                               wifi_event_handler,
+                                               NULL));
 
     wifi_config_t wc = {0};
     strlcpy((char *)wc.ap.ssid, WIFI_SSID, sizeof(wc.ap.ssid));
@@ -41,9 +75,19 @@ esp_err_t app_wifi_start_ap(void)
     wc.ap.max_connection = 4;
     wc.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wc));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_AP));
+    RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &wc));
+    RETURN_ON_ERROR(esp_wifi_start());
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_events,
+                                           WIFI_AP_STARTED_BIT,
+                                           pdFALSE,
+                                           pdFALSE,
+                                           pdMS_TO_TICKS(5000));
+    if ((bits & WIFI_AP_STARTED_BIT) == 0) {
+        ESP_LOGE(TAG, "Wi-Fi AP start confirmation timed out");
+        return ESP_ERR_TIMEOUT;
+    }
 
     ESP_LOGI(TAG,
              "Wi-Fi AP started: SSID=%s, password=%s, URL=http://10.10.10.1",
